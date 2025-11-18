@@ -1,5 +1,7 @@
 # App Design
 
+#imports
+'''
 #QWidget - Window that user sees
 #QLabel - All the text we want to see
 #QPushButton - All the buttons
@@ -11,11 +13,13 @@
 #QHBoxLayout - Horizontal layout (Row)
 #QMessageBox - Popup
 #QTableWidgetItem - Widgets
-#QHeaderView - Styling
+#QHeaderView - Styling 
+'''
 from PyQt6.QtWidgets import QWidget, QLabel, QPushButton, QLineEdit, QComboBox, QDateEdit, QTableWidget, QVBoxLayout, QHBoxLayout, QMessageBox, QTableWidgetItem, QHeaderView
-
+'''
 #QDate - Works with the date
 #Qt - Alignment
+'''
 from PyQt6.QtCore import QDate, Qt
 
 #need these to call when a button is clicked
@@ -24,9 +28,10 @@ from database import get_expenses, add_expenses, remove_expenses
 #Everything is built on the window (QWidget)
 class FinanceApp(QWidget):
     #Constructor
-    def __init__(self):
+    def __init__(self, user_id):
         #Activates inheritance
         super().__init__()
+        self.user_id = user_id
         self.settings()
         self.initUI()
         self.load_table() 
@@ -56,6 +61,9 @@ class FinanceApp(QWidget):
         self.btn_delete = QPushButton("Delete Expense")
         self.btn_delete.setObjectName("btn_delete")
 
+        self.btn_logout = QPushButton("Logout")
+        self.btn_logout.setObjectName("btn_logout")
+
         self.table = QTableWidget(0, 5)
         self.table.setHorizontalHeaderLabels(["ID", "Date", "Category", "Amount", "Description"])
         
@@ -68,6 +76,7 @@ class FinanceApp(QWidget):
         #connects buttons to functions
         self.btn_add.clicked.connect(self.add_expense)
         self.btn_delete.clicked.connect(self.remove_expense)
+        self.btn_logout.clicked.connect(self.logout)
 
         self.apply_style()
         #Add widgets to a layout (either row or column)
@@ -79,6 +88,7 @@ class FinanceApp(QWidget):
         row1 = QHBoxLayout()
         row2 = QHBoxLayout()
         row3 = QHBoxLayout()
+        row4 = QHBoxLayout()
 
         #Row 1
         row1.addWidget(QLabel("Date"))
@@ -95,9 +105,14 @@ class FinanceApp(QWidget):
         row3.addWidget(self.btn_add)
         row3.addWidget(self.btn_delete)
 
+        # Row 4 - Logout button aligned to the right
+        row4.addStretch()
+        row4.addWidget(self.btn_logout)
+
         master.addLayout(row1)
         master.addLayout(row2)
         master.addLayout(row3)
+        master.addLayout(row4)
         master.addWidget(self.table)
 
         self.setLayout(master)
@@ -201,7 +216,19 @@ class FinanceApp(QWidget):
         }
         #btn_delete:pressed {
             background-color: #ff102e;
-        }                
+        }     
+
+        #btn_logout {
+            background-color: #2c3e50;
+            color: white;
+            padding: 8px 15px;
+            border-radius: 5px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        #btn_logout:hover {
+            background-color: #34495e;
+        }         
 
         QPushButton:disabled {
             background-color: #c8c8c8;
@@ -217,6 +244,8 @@ class FinanceApp(QWidget):
             padding: 5px;
             border-radius: 4px;
         }
+                           
+        
         """)
 
     #expense categories
@@ -226,12 +255,15 @@ class FinanceApp(QWidget):
         self.dropdown.addItems(categories)
 
     def load_table(self):
-        expenses = get_expenses()
+        expenses = get_expenses(self.user_id)
         self.table.setRowCount(0)
         
         for row, expense in enumerate(expenses):
             self.table.insertRow(row)
-            for column, data in enumerate(expense):
+            # Skip user_id column (index 1) when displaying
+            # Displays id, date, category, amount, description
+            display_data = [expense[0], expense[2], expense[3], expense[4], expense[5]]
+            for column, data in enumerate(display_data):
                 self.table.setItem(row, column, QTableWidgetItem(str(data)))
 
     def clear_inputs(self):
@@ -241,7 +273,7 @@ class FinanceApp(QWidget):
         self.description.clear()
 
     def add_expense(self):
-        date = self.date_box.date().toString("yyyy-MM-dd")
+        date = self.date_box.date().toString("MM/dd/yy")
         category = self.dropdown.currentText() #QComboBox
         amount = self.amount.text() #QLineEdit
         description = self.description.text()
@@ -250,13 +282,25 @@ class FinanceApp(QWidget):
             QMessageBox.warning(self, "Input Error", "Amount and Description cannot be empty")
             return
         
+        # Validate category is selected (not "Select")
+        if category == "Select":
+            QMessageBox.warning(self, "Input Error", "Please select a category")
+            return
+        
+        # Validate amount is a valid number
+        try:
+            float(amount)
+        except ValueError:
+            QMessageBox.warning(self, "Input Error", "Amount must be a valid number")
+            return
+        
         #everytime we add an expense we should call the load table to refresh the table
-        if add_expenses(date, category, amount, description):
+        if add_expenses(self.user_id, date, category, amount, description):
             self.load_table()
             # Clear inputs
             self.clear_inputs()
         else: 
-            QMessageBox.critical(self, "Error", "Failed to add expense")
+            QMessageBox.critical(self, "Error", "Failed to add expense. Please check that you are logged in correctly.")
 
     def remove_expense(self):
         selected_row = self.table.currentRow()
@@ -268,6 +312,13 @@ class FinanceApp(QWidget):
         expense_id = int(self.table.item(selected_row, 0).text())
         confirm = QMessageBox.question(self, "Confirm", "Are you sure you want to delete this expense?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
 
-        if confirm == QMessageBox.StandardButton.Yes and remove_expenses(expense_id):
+        if confirm == QMessageBox.StandardButton.Yes and remove_expenses(expense_id, self.user_id):
             #_data??
             self.load_table()
+    
+    def logout(self):
+        reply = QMessageBox.question(self, "Logout", "Are you sure you want to logout?", 
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            self.close()
